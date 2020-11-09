@@ -2,6 +2,29 @@ from . import Base
 from sqlalchemy import Column, Integer, BigInteger, DateTime, String, Numeric, Text
 
 
+class StSwapStat(Base):
+    __tablename__ = 'st_swap_stat'
+    id = Column(Integer, primary_key=True)
+    swap_stat = Column(String(32))
+    swap_value = Column(String(32))
+
+    def __init__(self, **kwargs):
+        super(StSwapStat, self).__init__(**kwargs)
+
+class StSwapLiquidity(Base):
+    __tablename__ = 'st_swap_liquidity'
+    id = Column(Integer, primary_key=True)
+    tp_name = Column(String(64))
+    token1_name = Column(String(32))
+    token2_name = Column(String(32))
+    token1_amount = Column(BigInteger)
+    token2_amount = Column(BigInteger)
+    stat_time = Column(DateTime)
+
+    def __init__(self, **kwargs):
+        super(StSwapStat, self).__init__(**kwargs)
+
+
 class BlBlock(Base):
     __tablename__ = 'bl_block'
     block_num = Column(BigInteger, primary_key=True)

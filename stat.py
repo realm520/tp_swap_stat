@@ -8,7 +8,8 @@ from sqlalchemy import func
 from libs.xwc_api import XWC
 from libs.xt_api import Api
 from libs import session
-from libs.models import StSwapTick, BlTxEvents, BlBlock
+from libs.models import StSwapTick, BlTxEvents, BlBlock, StSwapStat
+from libs.models import StSwapLiquidity
 
 
 class TokenSwapStat:
@@ -19,6 +20,11 @@ class TokenSwapStat:
             'xwc_eth': 'XWCCJV5jJ8acWx3AfVPUT6x1K2hXRkptZ8hGB',
             'xwc_cusd': 'XWCCarrfVrHCRupUbJfasasx2Rdy4Aor8eTD9',
             'xwc_tp': 'XWCCcUF3uQDHzyhAuKsZ9DtFyVBcFuousjR6w'
+        }
+        self.pairsReverse = {
+            'XWCCJV5jJ8acWx3AfVPUT6x1K2hXRkptZ8hGB': 'xwc_eth',
+            'XWCCarrfVrHCRupUbJfasasx2Rdy4Aor8eTD9': 'xwc_cusd',
+            'XWCCcUF3uQDHzyhAuKsZ9DtFyVBcFuousjR6w': 'xwc_tp'
         }
         self.id2AssetName = {'1.3.0': 'XWC', '1.3.3': 'ETH'}
         self.last1HourBlock = 0
@@ -316,6 +322,37 @@ class TokenSwapStat:
             process_kline_common(StSwapKdataDaily, StSwapKdataMonthly, KLineMonthlyObj, p)
         session.commit()
 
+    def updateLiquidity(self):
+        lastBlock = 5003249
+        lastBlockRecord = session.query(StSwapStat.swap_value).filter(StSwapStat.swap_stat=='liquidity_scan_block').first()
+        if lastBlockRecord is not None:
+            blockNum = int(lastBlockRecord[0])
+            if blockNum > 5003249:
+                lastBlock = blockNum
+        events = session.query(BlTxEvents).\
+            filter(\
+                BlTxEvents.block_num>lastBlock,
+                BlTxEvents.event_name.in_('Exchanged','LiquidityAdded','LiquidityRemoved')).\
+            order_by(block_num).all()
+        currentRecord = {
+            'stat_time': datetime.datetime.now()
+        }
+        currentBlock = lastBlock
+        currentDay = 0
+        for e in events:
+            if currentBlock != e.block_num:
+                block = self._xwc_api.get_block(e.block_num)
+                blockTime = datetime.datetime.strptime(
+                        block['timestamp'],
+                        "%Y-%m-%dT%H:%M:%S")
+                blockDay = datetime.datetime(blockTime.year, blockTime.month, blockTime.day)
+                if currentDay != blockDay:
+                    # TODO, commit record
+                    currentDay = blockDay
+                currentBlock = e.block_num
+            self.pairsReverse[e.contract_address]
+        
+        
 
     def stat(self):
         data = {}
