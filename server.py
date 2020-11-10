@@ -1,6 +1,7 @@
 import datetime
 import copy
 from fastapi import FastAPI, Path
+from sqlalchemy.sql import func
 from typing import Optional
 from libs import Session
 #from libs.models import StSwapKdata1Min, StSwapKdata5Min, StSwapKdata15Min, \
@@ -8,11 +9,27 @@ from libs import Session
     #StSwapKdata1Hour, StSwapKdata2Hour, StSwapKdata12Hour, \
     #StSwapKdataMonthly
 from libs.models import kline_table_list
-from libs.models import StSwapLiquidity
+from libs.models import StSwapLiquidity, StSwapKdataDaily, StSwapKdataWeekly
 from libs.xt_api import Api
 
 
 app = FastAPI()
+
+
+@app.get("/swap_stat/trade_amount/{cycle}")
+def get_trade_amount(cycle: str = Path(..., regex="^(daily|weekly)$")):
+    session = Session()
+    if cycle == 'daily':
+        data = session.query(StSwapKdataDaily.timestamp,func.sum(StSwapKdataDaily.volume).label("volume")).group_by(StSwapKdataDaily.timestamp).all()
+    elif cycle == 'weekly':
+        data = session.query(StSwapKdataWeekly).all()
+    xt_api = Api("", "")
+    xwcPrice = xt_api.get_ticker(f'xwc_usdt')['price']
+    result = []
+    for d in data:
+        result.append({'stat_time': d.timestamp, 'trade_amount': float(d.volume)*xwcPrice})
+    session.close()
+    return result
 
 
 @app.get("/swap_stat/liquidity/{ex_pair}")
