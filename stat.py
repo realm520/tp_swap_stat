@@ -283,7 +283,7 @@ class TokenSwapStat:
         from libs.k_line_obj import KLine1MinObj, KLine5MinObj, KLine15MinObj, KLine30MinObj, KLine1HourObj, KLine2HourObj, \
                         KLine6HourObj, KLine12HourObj, KLineWeeklyObj, KLineDailyObj, KLineMonthlyObj
         def process_kline_common(base_table, target_table, process_obj, pair):
-            print("base: %s, target: %s, pair: %s" % (str(base_table), str(target_table), pair))
+            #print("base: %s, target: %s, pair: %s" % (str(base_table), str(target_table), pair))
             k_last = session.query(target_table).filter(target_table.ex_pair==pair).order_by(target_table.timestamp.desc()).limit(1).first()
             k = process_obj(k_last)
             if k_last is None:
@@ -291,7 +291,7 @@ class TokenSwapStat:
                 last_time = datetime.datetime.utcnow() - datetime.timedelta(days=365)
             else:
                 last_time = k_last.timestamp
-            print("last time: %s" % (last_time))
+            #print("last time: %s" % (last_time))
             ticks = session.query(base_table).filter(base_table.ex_pair==pair, base_table.timestamp>=last_time).order_by(base_table.id).all()
             for t in ticks:
                 k.process_tick(t)
@@ -350,7 +350,6 @@ class TokenSwapStat:
             currentRecord['stat_time'] = lastRecord.stat_time
             currentRecord['token1_amount'] = lastRecord.token1_amount
             currentRecord['token2_amount'] = lastRecord.token2_amount
-        print(currentRecord)
         events = self._xwc_api.get_contract_events(contract, startBlock, lastBlock-startBlock)
         for e in events:
             if currentRecord['block_num'] != e['block_num']:
@@ -360,8 +359,9 @@ class TokenSwapStat:
                 blockDay = datetime.datetime(blockTime.year, blockTime.month, blockTime.day)
                 if currentRecord['stat_time'] == 0:
                     currentRecord['stat_time'] = blockDay
-                elif currentRecord['stat_time'] != blockDay:
+                elif currentRecord['stat_time'] != blockDay and currentRecord['token1_amount'] > 0 and currentRecord['token2_amount'] > 0:
                     # TODO, commit record and reset currentRecord
+                    session.query(StSwapLiquidity).filter(StSwapLiquidity.tp_name==pair,StSwapLiquidity.stat_time==currentRecord['stat_time']).delete()
                     session.add(StSwapLiquidity(
                         tp_name=pair,
                         token1_name=tokens[0],
@@ -373,14 +373,15 @@ class TokenSwapStat:
                     currentRecord['stat_time'] = blockDay
             if e['event_name'] == 'LiquidityAdded':
                 liquidityChange = json.loads(e['event_arg'])
-                currentRecord['token1_amount'] += int(liquidityChange[tokens[0]])
-                currentRecord['token2_amount'] += int(liquidityChange[tokens[1]])
+                currentRecord['token1_amount'] += int(liquidityChange[self.token2Addr(tokens[0])])
+                currentRecord['token2_amount'] += int(liquidityChange[self.token2Addr(tokens[1])])
             elif e['event_name'] == 'LiquidityRemoved':
                 liquidityChange = json.loads(e['event_arg'])
-                currentRecord['token1_amount'] -= int(liquidityChange[tokens[0]])
-                currentRecord['token2_amount'] -= int(liquidityChange[tokens[1]])
+                currentRecord['token1_amount'] -= int(liquidityChange[self.token2Addr(tokens[0])])
+                currentRecord['token2_amount'] -= int(liquidityChange[self.token2Addr(tokens[1])])
             elif e['event_name'] == 'Exchanged':
                 liquidityChange = json.loads(e['event_arg'])
+                liquidityChange['buy_asset'] = self.addr2Token(liquidityChange['buy_asset'])
                 if tokens[0] == liquidityChange['buy_asset']:
                     currentRecord['token1_amount'] -= int(liquidityChange['buy_amount'])
                     currentRecord['token2_amount'] += int(liquidityChange['sell_amount'])
@@ -389,17 +390,16 @@ class TokenSwapStat:
                     currentRecord['token1_amount'] += int(liquidityChange['sell_amount'])
             else:
                 continue
-            print(e['event_name'], e['event_arg'])
-            print(currentRecord)
-        print(currentRecord)
-        session.add(StSwapLiquidity(
-            tp_name=pair,
-            token1_name=tokens[0],
-            token2_name=tokens[1],
-            token1_amount=currentRecord['token1_amount'],
-            token2_amount=currentRecord['token2_amount'],
-            stat_time=currentRecord['stat_time']
-        ))
+        if currentRecord['token1_amount'] > 0 and currentRecord['token2_amount'] > 0:
+            session.query(StSwapLiquidity).filter(StSwapLiquidity.tp_name==pair,StSwapLiquidity.stat_time==currentRecord['stat_time']).delete()
+            session.add(StSwapLiquidity(
+                tp_name=pair,
+                token1_name=tokens[0],
+                token2_name=tokens[1],
+                token1_amount=currentRecord['token1_amount'],
+                token2_amount=currentRecord['token2_amount'],
+                stat_time=currentRecord['stat_time']
+            ))
 
     def updateLiquidity(self):
         lastBlock = 4953249
@@ -411,7 +411,13 @@ class TokenSwapStat:
         currentBlock = self._xwc_api.get_block_height()
         for p, c in self.pairs.items():
             self._updateSinglePairLiqiuidy(lastBlock, p, c, currentBlock)
+        session.query(StSwapStat).filter(StSwapStat.swap_stat=='liquidity_scan_block').delete()
+        session.add(StSwapStat(
+            swap_stat='liquidity_scan_block',
+            swap_value=currentBlock
+        ))
         session.commit()
+        print('updateLiquidity committed')
         
 
     def stat(self):
@@ -429,9 +435,9 @@ if __name__ == '__main__':
     statObj = TokenSwapStat(xwc_api, xt_api)
     while True:
         try:
-            #statObj.stat()
-            #statObj.updateTick()
-            #statObj.updateKline()
+            statObj.stat()
+            statObj.updateTick()
+            statObj.updateKline()
             statObj.updateLiquidity()
         except Exception as e:
             print(str(e))

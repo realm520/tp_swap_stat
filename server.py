@@ -1,4 +1,5 @@
 import datetime
+import copy
 from fastapi import FastAPI, Path
 from typing import Optional
 from libs import Session
@@ -7,14 +8,51 @@ from libs import Session
     #StSwapKdata1Hour, StSwapKdata2Hour, StSwapKdata12Hour, \
     #StSwapKdataMonthly
 from libs.models import kline_table_list
+from libs.models import StSwapLiquidity
+from libs.xt_api import Api
 
 
 app = FastAPI()
 
 
+@app.get("/swap_stat/liquidity/{ex_pair}")
+def get_liquidity(ex_pair: str = Path(..., regex="^(xwc_eth|xwc_tp|xwc_cusd|all)$")):
+    session = Session()
+    if ex_pair == 'all':
+        data = session.query(StSwapLiquidity).order_by(StSwapLiquidity.stat_time).all()
+    else:
+        data = session.query(StSwapLiquidity).\
+                filter(StSwapLiquidity.tp_name==ex_pair).\
+                order_by(StSwapLiquidity.stat_time).all()
+    liquidity = []
+    xt_api = Api("", "")
+    price = {
+        'XWC': xt_api.get_ticker(f'xwc_usdt')['price'],
+        'ETH': xt_api.get_ticker(f'eth_usdt')['price'],
+        'TP': xt_api.get_ticker(f'tp_usdt')['price'],
+        'CUSD': 1
+    }
+    print(price)
+    dailyData = {
+        "stat_time": 0,
+        "market_value": -1
+    }
+    for d in data:
+        if dailyData['stat_time'] == d.stat_time:
+            dailyData['market_value'] +=  d.token1_amount / 10 ** 8 * price[d.token1_name] + d.token2_amount / 10 ** 8 * price[d.token2_name]
+        else:
+            if dailyData['stat_time'] != 0:
+                liquidity.append(copy.deepcopy(dailyData))
+                print(dailyData)
+            dailyData['stat_time'] = d.stat_time
+            dailyData['market_value'] =  d.token1_amount / 10 ** 8 * price[d.token1_name] + d.token2_amount / 10 ** 8 * price[d.token2_name]
+    liquidity.append(copy.deepcopy(dailyData))
+    session.close()
+    return liquidity
+
+
 @app.get("/swap_stat/kline/{ex_pair}/{k_type}")
 def get_kline(ex_pair: str = Path(..., regex="^(xwc_eth|xwc_tp|xwc_cusd)$"), k_type: int = Path(0, ge=0, lt=11), limit: int = 100):
-    import copy
     session = Session()
     if k_type < 0 or k_type >= len(kline_table_list):
         print(f"invalid k_type [MUST between 0 - {len(kline_table_list)-1}]")
