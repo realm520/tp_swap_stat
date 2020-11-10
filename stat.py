@@ -33,17 +33,22 @@ class TokenSwapStat:
         self.perBlockTp = 0.06944444
 
     def addr2Token(self, address):
-        originAssets = ['XWC', 'ETH']
         addrTokenMap = {
             'XWCCUXT5Dr5EdYtoHBkCsTqSUUEpNd5uf22Db': 'TP',
             'XWCCc55NYwUDeQyy2Co5hqdFt75wWUrMu71rW': 'CUSD',
             'XWC': 'XWC',
             'ETH': 'ETH'
         }
-        if address in originAssets:
-            return address
-        else:
-            return addrTokenMap[address]
+        return addrTokenMap[address]
+
+    def token2Addr(self, token):
+        tokenAddrMap = {
+            'TP': 'XWCCUXT5Dr5EdYtoHBkCsTqSUUEpNd5uf22Db',
+            'CUSD': 'XWCCc55NYwUDeQyy2Co5hqdFt75wWUrMu71rW',
+            'XWC': 'XWC',
+            'ETH': 'ETH'
+        }
+        return tokenAddrMap[token]
 
     def _getMatchedBlock(self, startBlock, endBlock, startTime):
         blockNumber = startBlock
@@ -369,20 +374,21 @@ class TokenSwapStat:
                     currentRecord['token2_amount'] = 0
             if e.event_name == 'LiquidityAdded':
                 liquidityChange = json.loads(e.event_arg)
-                currentRecord['token1_amount'] += liquidityChange[tokens[0]]
-                currentRecord['token2_amount'] += liquidityChange[tokens[1]]
+                currentRecord['token1_amount'] += liquidityChange[self.token2Addr(tokens[0])]
+                currentRecord['token2_amount'] += liquidityChange[self.token2Addr(tokens[1])]
             elif e.event_name == 'LiquidityAdded':
                 liquidityChange = json.loads(e.event_arg)
-                currentRecord['token1_amount'] -= liquidityChange[tokens[0]]
-                currentRecord['token2_amount'] -= liquidityChange[tokens[1]]
+                currentRecord['token1_amount'] -= liquidityChange[self.token2Addr(tokens[0])]
+                currentRecord['token2_amount'] -= liquidityChange[self.token2Addr(tokens[1])]
             elif e.event_name == 'Exchanged':
                 liquidityChange = json.loads(e.event_arg)
+                liquidityChange['buy_asset'] = self.addr2Token(liquidityChange['buy_asset'])
                 if tokens[0] == liquidityChange['buy_asset']:
-                    currentRecord['token1_amount'] += liquidityChange['buy_amount']
-                    currentRecord['token2_amount'] -= liquidityChange['sell_amount']
+                    currentRecord['token1_amount'] -= liquidityChange['buy_amount']
+                    currentRecord['token2_amount'] += liquidityChange['sell_amount']
                 else:
-                    currentRecord['token2_amount'] += liquidityChange['buy_amount']
-                    currentRecord['token1_amount'] -= liquidityChange['sell_amount']
+                    currentRecord['token2_amount'] -= liquidityChange['buy_amount']
+                    currentRecord['token1_amount'] += liquidityChange['sell_amount']
         session.add(StSwapLiquidity(
             tp_name=pair,
             token1_name=tokens[0],
@@ -393,11 +399,11 @@ class TokenSwapStat:
         ))
 
     def updateLiquidity(self):
-        lastBlock = 5003249
+        lastBlock = 4953249
         lastBlockRecord = session.query(StSwapStat.swap_value).filter(StSwapStat.swap_stat=='liquidity_scan_block').first()
         if lastBlockRecord is not None:
             blockNum = int(lastBlockRecord[0])
-            if blockNum > 5003249:
+            if blockNum > lastBlock:
                 lastBlock = blockNum
         for p, c in self.pairs.items():
             self._updateSinglePairLiqiuidy(lastBlock, p, c)
