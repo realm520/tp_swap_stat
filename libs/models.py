@@ -22,7 +22,7 @@ class StSwapLiquidity(Base):
     stat_time = Column(DateTime)
 
     def __init__(self, **kwargs):
-        super(StSwapStat, self).__init__(**kwargs)
+        super(StSwapLiquidity, self).__init__(**kwargs)
 
 
 class BlBlock(Base):
