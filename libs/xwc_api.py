@@ -109,6 +109,13 @@ class XWC:
         return resp
         # return {'eth': spendNumber, 'xwc': targetNumber} if direction == 1 else {'eth': targetNumber, 'xwc': spendNumber}
 
+    def get_contract_events(self, contract, start, count):
+        try:
+            resp = self.rpc_request('get_contract_events_in_range', [contract, start, count])
+        except:
+            pass
+        return resp
+
     def get_block_height(self):
         blockNumber = 0
         try:

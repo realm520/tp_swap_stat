@@ -327,16 +327,17 @@ class TokenSwapStat:
             process_kline_common(StSwapKdataDaily, StSwapKdataMonthly, KLineMonthlyObj, p)
         session.commit()
 
-    def _updateSinglePairLiqiuidy(self, startBlock, pair, contract):
+    def _updateSinglePairLiqiuidy(self, startBlock, pair, contract, lastBlock):
         tokens = pair.split('_')
         tokens[0] = tokens[0].upper()
         tokens[1] = tokens[1].upper()
-        events = session.query(BlTxEvents).\
-            filter(\
-                BlTxEvents.block_num>startBlock,
-                BlTxEvents.event_name.in_('Exchanged','LiquidityAdded','LiquidityRemoved'),
-                BlTxEvents.contract_address==contract).\
-            order_by(BlTxEvents.block_num).all()
+        #events = session.query(BlTxEvents.event_name,BlTxEvents.event_arg,BlTxEvents.block_num,BlBlock.block_time).\
+            #join(BlBlock, BlBlock.block_num==BlTxEvents.block_num).\
+            #filter(\
+                #BlTxEvents.block_num>startBlock,
+                #BlTxEvents.event_name.in_(('Exchanged','LiquidityAdded','LiquidityRemoved')),
+                #BlTxEvents.contract_address==contract).\
+            #order_by(BlTxEvents.block_num).all()
         lastRecord = session.query(StSwapLiquidity).filter(
             StSwapLiquidity.tp_name==pair).order_by(StSwapLiquidity.stat_time.desc()).first()
         currentRecord = {
@@ -349,13 +350,13 @@ class TokenSwapStat:
             currentRecord['stat_time'] = lastRecord.stat_time
             currentRecord['token1_amount'] = lastRecord.token1_amount
             currentRecord['token2_amount'] = lastRecord.token2_amount
+        print(currentRecord)
+        events = self._xwc_api.get_contract_events(contract, startBlock, lastBlock-startBlock)
         for e in events:
-            if currentRecord['block_num'] != e.block_num:
-                currentRecord['block_num'] = e.block_num
-                block = self._xwc_api.get_block(e.block_num)
-                blockTime = datetime.datetime.strptime(
-                        block['timestamp'],
-                        "%Y-%m-%dT%H:%M:%S")
+            if currentRecord['block_num'] != e['block_num']:
+                currentRecord['block_num'] = e['block_num']
+                block = session.query(BlBlock.block_time).filter(BlBlock.block_num==e['block_num']).first()
+                blockTime = block[0]
                 blockDay = datetime.datetime(blockTime.year, blockTime.month, blockTime.day)
                 if currentRecord['stat_time'] == 0:
                     currentRecord['stat_time'] = blockDay
@@ -370,25 +371,27 @@ class TokenSwapStat:
                         stat_time=currentRecord['stat_time']
                     ))
                     currentRecord['stat_time'] = blockDay
-                    currentRecord['token1_amount'] = 0
-                    currentRecord['token2_amount'] = 0
-            if e.event_name == 'LiquidityAdded':
-                liquidityChange = json.loads(e.event_arg)
-                currentRecord['token1_amount'] += liquidityChange[self.token2Addr(tokens[0])]
-                currentRecord['token2_amount'] += liquidityChange[self.token2Addr(tokens[1])]
-            elif e.event_name == 'LiquidityAdded':
-                liquidityChange = json.loads(e.event_arg)
-                currentRecord['token1_amount'] -= liquidityChange[self.token2Addr(tokens[0])]
-                currentRecord['token2_amount'] -= liquidityChange[self.token2Addr(tokens[1])]
-            elif e.event_name == 'Exchanged':
-                liquidityChange = json.loads(e.event_arg)
-                liquidityChange['buy_asset'] = self.addr2Token(liquidityChange['buy_asset'])
+            if e['event_name'] == 'LiquidityAdded':
+                liquidityChange = json.loads(e['event_arg'])
+                currentRecord['token1_amount'] += int(liquidityChange[tokens[0]])
+                currentRecord['token2_amount'] += int(liquidityChange[tokens[1]])
+            elif e['event_name'] == 'LiquidityRemoved':
+                liquidityChange = json.loads(e['event_arg'])
+                currentRecord['token1_amount'] -= int(liquidityChange[tokens[0]])
+                currentRecord['token2_amount'] -= int(liquidityChange[tokens[1]])
+            elif e['event_name'] == 'Exchanged':
+                liquidityChange = json.loads(e['event_arg'])
                 if tokens[0] == liquidityChange['buy_asset']:
-                    currentRecord['token1_amount'] -= liquidityChange['buy_amount']
-                    currentRecord['token2_amount'] += liquidityChange['sell_amount']
+                    currentRecord['token1_amount'] -= int(liquidityChange['buy_amount'])
+                    currentRecord['token2_amount'] += int(liquidityChange['sell_amount'])
                 else:
-                    currentRecord['token2_amount'] -= liquidityChange['buy_amount']
-                    currentRecord['token1_amount'] += liquidityChange['sell_amount']
+                    currentRecord['token2_amount'] -= int(liquidityChange['buy_amount'])
+                    currentRecord['token1_amount'] += int(liquidityChange['sell_amount'])
+            else:
+                continue
+            print(e['event_name'], e['event_arg'])
+            print(currentRecord)
+        print(currentRecord)
         session.add(StSwapLiquidity(
             tp_name=pair,
             token1_name=tokens[0],
@@ -405,8 +408,10 @@ class TokenSwapStat:
             blockNum = int(lastBlockRecord[0])
             if blockNum > lastBlock:
                 lastBlock = blockNum
+        currentBlock = self._xwc_api.get_block_height()
         for p, c in self.pairs.items():
-            self._updateSinglePairLiqiuidy(lastBlock, p, c)
+            self._updateSinglePairLiqiuidy(lastBlock, p, c, currentBlock)
+        session.commit()
         
 
     def stat(self):
@@ -424,9 +429,10 @@ if __name__ == '__main__':
     statObj = TokenSwapStat(xwc_api, xt_api)
     while True:
         try:
-            statObj.stat()
-            statObj.updateTick()
-            statObj.updateKline()
+            #statObj.stat()
+            #statObj.updateTick()
+            #statObj.updateKline()
+            statObj.updateLiquidity()
         except Exception as e:
             print(str(e))
         time.sleep(6)

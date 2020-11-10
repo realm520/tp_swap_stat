@@ -50,7 +50,7 @@ class BlTxEvents(Base):
         super(BlTxEvents, self).__init__(**kwargs)
 
     def __repr__(self):
-        return '<BlTxEvents %r>' % self.tx_id
+        return '<BlTxEvents %r>' % self.trx_id
     
     def toQueryObj(self):
         return {"trx_id": self.trx_id, "caller_addr": self.caller_addr, \
