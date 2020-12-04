@@ -22,7 +22,7 @@ def get_trade_amount(cycle: str = Path(..., regex="^(daily|weekly)$")):
     if cycle == 'daily':
         data = session.query(StSwapKdataDaily.timestamp,func.sum(StSwapKdataDaily.volume).label("volume")).group_by(StSwapKdataDaily.timestamp).all()
     elif cycle == 'weekly':
-        data = session.query(StSwapKdataWeekly).all()
+        data = session.query(StSwapKdataWeekly.timestamp,func.sum(StSwapKdataWeekly.volume).label("volume")).group_by(StSwapKdataWeekly.timestamp).all()
     xt_api = Api("", "")
     xwcPrice = xt_api.get_ticker(f'xwc_usdt')['price']
     result = []
@@ -59,8 +59,10 @@ def get_liquidity(ex_pair: str = Path(..., regex="^(xwc_eth|xwc_tp|xwc_cusd|all)
             dailyData['market_value'] +=  d.token1_amount / 10 ** 8 * price[d.token1_name] + d.token2_amount / 10 ** 8 * price[d.token2_name]
         else:
             if dailyData['stat_time'] != 0:
-                liquidity.append(copy.deepcopy(dailyData))
-                print(dailyData)
+                while dailyData['stat_time'] != d.stat_time:
+                    liquidity.append(copy.deepcopy(dailyData))
+                    print(dailyData)
+                    dailyData['stat_time'] += datetime.timedelta(days=1)
             dailyData['stat_time'] = d.stat_time
             dailyData['market_value'] =  d.token1_amount / 10 ** 8 * price[d.token1_name] + d.token2_amount / 10 ** 8 * price[d.token2_name]
     liquidity.append(copy.deepcopy(dailyData))

@@ -13,6 +13,7 @@ class XWC:
     def __init__(self, url, account):
         self.baseUrl = url #"http://47.75.155.116:40123"
         self.caller = account
+        self.gasPrice = "0.00000001"
         self.swapAddr = {
             "xwc_eth": "XWCCJV5jJ8acWx3AfVPUT6x1K2hXRkptZ8hGB",
             "xwc_cusd": "XWCCarrfVrHCRupUbJfasasx2Rdy4Aor8eTD9",
@@ -35,6 +36,9 @@ class XWC:
             try:
                 logging.debug("[HTTP POST] %s" % payload)
                 response = requests.request("POST", self.baseUrl, data=payload, headers=headers)
+                # if method == "invoke_contract":
+                #     pass
+                    # print(response.text)
                 rep = response.json()
                 if "result" in rep:
                     return rep["result"]
@@ -133,10 +137,54 @@ class XWC:
             pass
         return resp
 
+    def deploy_contract(self, contract_path):
+        res = self.rpc_request("register_contract",[self.caller,"0.00001",500000,contract_path])
+        if res is None:
+            return ''
+        else:
+            return res["contract_id"]
 
+    def create_account(self, account):
+        res = self.rpc_request("wallet_create_account",[account])
+        return res
 
-    def get_order(self, txid):
-        pass
+    def list_all_accounts(self):
+        res = self.rpc_request("list_my_accounts",[])
+        return [(u['name'], u['addr']) for u in res]
+
+    def dump_private_keys(self):
+        res = self.rpc_request("dump_private_keys",[])
+        return res
+
+    def deploy_dai_contracts(self, params):
+        cdcId = self.deploy_contract(params['cdc']['gpc'])
+        cdcProxyId = self.deploy_contract(params['cdcProxy']['gpc'])
+        priceFeederId = self.deploy_contract(params['priceFeeder']['gpc'])
+        stableTokenId = self.deploy_contract(params['stableToken']['gpc'])
+        if cdcId == '' or cdcProxyId == '' or priceFeederId == '' or stableTokenId == '':
+            print(f"Failed to deploy contract: {cdcId}, {cdcProxyId}, {priceFeederId}, {stableTokenId}")
+            return
+        initStableToken = self.rpc_request('invoke_contract', [
+                    self.caller, "0.00001", 500000, stableTokenId, "init_token",
+                    f"{params['stableToken']['name']},{params['stableToken']['symbol']},{cdcId},1000000"
+                ])
+        print(initStableToken)
+        initPriceFeeder = self.rpc_request('invoke_contract', [
+                    self.caller, "0.00001", 500000, priceFeederId, "init_config",
+                    f"{params['priceFeeder']['baseAsset']},{stableTokenId},{params['priceFeeder']['initPrice']},{params['priceFeeder']['maxChangeRatio']}"
+                ])
+        print(initPriceFeeder)
+        initCdc = self.rpc_request('invoke_contract', [
+                    self.caller, "0.00001", 500000, cdcId, "init_config",
+                    f"{params['priceFeeder']['baseAsset']},{params['cdc']['stabilityFee']},{params['cdc']['liquidationRatio']},{params['cdc']['liquidationPenalty']},{params['cdc']['liquidationDiscount']},{priceFeederId},{stableTokenId},{cdcProxyId}"
+                ])
+        print(initCdc)
+        return {
+            "cdc": cdcId,
+            "cdcProxy": cdcProxyId,
+            "priceFeeder": priceFeederId,
+            "stableToken": stableTokenId
+        }
 
 
 if __name__ == "__main__":
@@ -144,6 +192,6 @@ if __name__ == "__main__":
                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s',
                     datefmt='%Y-%m-%d  %H:%M:%S %a'
                     )
-    xwc = XWC("http://127.0.0.1:50807", "defi")
+    xwc = XWC("http://127.0.0.1:9999", "defi")
     fire.Fire(xwc)
     # xwc.send_order("xwc_eth", 0.3891, 877543175/10**8, 0)

@@ -163,6 +163,9 @@ class TokenSwapStat:
             cursor.execute("select min(block_num) from bl_block where block_time > date_sub(now(), interval 7 DAY)")
             results = cursor.fetchall()
             block7Day = results[0][0]
+            cursor.execute(f"select count(*) from bl_tx_events where contract_address = '{address}' and event_name='Exchanged' and block_num < {block1Day}")
+            results = cursor.fetchall()
+            txCountBefore24 = results[0][0]
         except:
             return
         txCount = 0
@@ -208,6 +211,7 @@ class TokenSwapStat:
             print(str(e))
             pass
         data['txCount'] = txCount
+        data['txCountBefore24'] = txCountBefore24
         data['tpStat'] = self.tpStat(address)
         print(json.dumps(data))
         return data
