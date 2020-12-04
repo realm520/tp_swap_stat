@@ -354,6 +354,9 @@ class TokenSwapStat:
             currentRecord['stat_time'] = lastRecord.stat_time
             currentRecord['token1_amount'] = lastRecord.token1_amount
             currentRecord['token2_amount'] = lastRecord.token2_amount
+        today = datetime.today()
+        if currentRecord['stat_time'] != today:
+            currentRecord['stat_time'] = today
         events = self._xwc_api.get_contract_events(contract, startBlock, lastBlock-startBlock)
         for e in events:
             if currentRecord['block_num'] != e['block_num']:

@@ -59,10 +59,7 @@ def get_liquidity(ex_pair: str = Path(..., regex="^(xwc_eth|xwc_tp|xwc_cusd|all)
             dailyData['market_value'] +=  d.token1_amount / 10 ** 8 * price[d.token1_name] + d.token2_amount / 10 ** 8 * price[d.token2_name]
         else:
             if dailyData['stat_time'] != 0:
-                while dailyData['stat_time'] != d.stat_time:
-                    liquidity.append(copy.deepcopy(dailyData))
-                    print(dailyData)
-                    dailyData['stat_time'] += datetime.timedelta(days=1)
+                liquidity.append(copy.deepcopy(dailyData))
             dailyData['stat_time'] = d.stat_time
             dailyData['market_value'] =  d.token1_amount / 10 ** 8 * price[d.token1_name] + d.token2_amount / 10 ** 8 * price[d.token2_name]
     liquidity.append(copy.deepcopy(dailyData))
